@@ -22,6 +22,7 @@ import org.apache.axiom.om.OMElement;
 import org.apache.axiom.om.impl.builder.StAXOMBuilder;
 import org.apache.axiom.om.util.AXIOMUtil;
 import org.apache.commons.lang.StringEscapeUtils;
+import org.json.simple.JSONObject;
 import org.wso2.carbon.apimgt.api.APIConsumer;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.APIProvider;
@@ -526,8 +527,7 @@ public class APIUsageStatisticsClient {
                 if (providerAPI.getId().getApiName().equals(usage.apiName) &&
                         providerAPI.getId().getVersion().equals(usage.apiVersion) &&
                         providerAPI.getContext().equals(usage.context)) {
-                    String[] apiData = {usage.apiName, usage.apiVersion,  providerAPI.getId().getProviderName()};
-                    String apiName = "[\""+apiData[0]+"\",\""+apiData[1]+"\",\""+apiData[2]+"\"]";
+                    String apiName = usage.apiName + " (" + providerAPI.getId().getProviderName() + ")";
                     APIUsageDTO usageDTO = usageByAPIs.get(apiName);
                     if (usageDTO != null) {
                         usageDTO.setCount(usageDTO.getCount() + usage.requestCount);
@@ -847,6 +847,32 @@ public class APIUsageStatisticsClient {
         return getTopEntries(new ArrayList<PerUserAPIUsageDTO>(usageByUsername.values()), limit);
     }
 
+    public List<APIRequestsByUserAgentsDTO> getUserAgentSummaryForALLAPIs() throws APIMgtUsageQueryServiceClientException{
+
+        OMElement omElement = this.queryDatabase("API_USERAGENT_SUMMARY");
+        Collection<APIUserAgent> userAgentData = getUserAgent(omElement);
+        Map<String, APIRequestsByUserAgentsDTO> apiRequestByUserAgents = new TreeMap<String, APIRequestsByUserAgentsDTO>();
+        APIRequestsByUserAgentsDTO userAgentsDTO = null;
+        ArrayList<APIRequestsByUserAgentsDTO> userAgentList = new ArrayList<APIRequestsByUserAgentsDTO>();
+        for (APIUserAgent usageEntry : userAgentData) {
+            String userA = usageEntry.userAgent;
+            int count = usageEntry.totalRequestCount;
+            if(!apiRequestByUserAgents.containsKey(usageEntry.userAgent)) {
+                userAgentsDTO = new APIRequestsByUserAgentsDTO();
+                userAgentsDTO.setUserAgent(usageEntry.userAgent);
+                userAgentsDTO.setCount(usageEntry.totalRequestCount);
+                apiRequestByUserAgents.put(usageEntry.userAgent, userAgentsDTO);
+            }else{
+                userAgentsDTO = new APIRequestsByUserAgentsDTO();
+                userAgentsDTO=(APIRequestsByUserAgentsDTO)apiRequestByUserAgents.get(usageEntry.userAgent);
+                userAgentsDTO.setCount(userAgentsDTO.getCount()+usageEntry.totalRequestCount);
+                apiRequestByUserAgents.remove(usageEntry.userAgent);
+                apiRequestByUserAgents.put(usageEntry.userAgent, userAgentsDTO);
+            }
+        }
+        return new ArrayList<APIRequestsByUserAgentsDTO>(apiRequestByUserAgents.values());
+    }
+
     public List<APIResponseFaultCountDTO> getAPIResponseFaultCount(String providerName, String fromDate, String toDate)
             throws APIMgtUsageQueryServiceClientException {
 
@@ -1046,7 +1072,7 @@ public class APIUsageStatisticsClient {
         });
         if (usageData.size() > limit) {
             APIUsageDTO other = new APIUsageDTO();
-            other.setApiName("[\"Other\"]");
+            other.setApiName("[Other]");
             for (int i = limit; i < usageData.size(); i++) {
                 other.setCount(other.getCount() + usageData.get(i).getCount());
             }
@@ -1787,6 +1813,21 @@ public class APIUsageStatisticsClient {
         return usageData;
     }
 
+    private Collection<APIUserAgent> getUserAgent(OMElement data) {
+        List<APIUserAgent> userAgentData = new ArrayList<APIUserAgent>();
+        OMElement rowsElement = data.getFirstChildWithName(new QName(
+                APIUsageStatisticsClientConstants.ROWS));
+        Iterator rowIterator = rowsElement.getChildrenWithName(new QName(
+                APIUsageStatisticsClientConstants.ROW));
+        if (rowIterator != null) {
+            while (rowIterator.hasNext()) {
+                OMElement rowElement = (OMElement) rowIterator.next();
+                userAgentData.add(new APIUserAgent(rowElement));
+            }
+        }
+        return userAgentData;
+    }
+
     private Collection<APIVersionUsageByUser> getUsageAPIBySubscriber(OMElement data) {
         List<APIVersionUsageByUser> usageData = new ArrayList<APIVersionUsageByUser>();
         OMElement rowsElement = data.getFirstChildWithName(new QName(
@@ -1916,8 +1957,7 @@ public class APIUsageStatisticsClient {
             return AXIOMUtil.stringToOM(returnString);
 
         } catch (Exception e) {
-            throw new APIMgtUsageQueryServiceClientException("Error occurred while querying from JDBC database" +
-                                                             e.getMessage(), e);
+            throw new APIMgtUsageQueryServiceClientException("Error occurred while querying from JDBC database", e);
         } finally {
             if (rs != null) {
                 try {
@@ -2281,6 +2321,23 @@ public class APIUsageStatisticsClient {
             /*requestCount = (long) Double.parseDouble(row.getFirstChildWithName(new QName(
                     APIUsageStatisticsClientConstants.REQUEST)).getText());*/
         }
+    }
+
+    public static class APIUserAgent{
+        private String apiName;
+        private String apiVersion;
+        private String userAgent;
+        private int totalRequestCount;
+        public APIUserAgent(OMElement row){
+            String nameVersion = row.getFirstChildWithName(new QName(
+                    APIUsageStatisticsClientConstants.API_VERSION)).getText();
+            int index = nameVersion.lastIndexOf(":v");
+            apiName = nameVersion.substring(0, index);
+            apiVersion = nameVersion.substring(index + 2);
+            userAgent = row.getFirstChildWithName(new QName("useragent")).getText();
+            totalRequestCount =  Integer.parseInt(row.getFirstChildWithName(new QName("total_request_count")).getText());
+        }
+
     }
 
 }

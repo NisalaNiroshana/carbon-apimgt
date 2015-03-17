@@ -96,7 +96,6 @@ public class APIProviderHostObject extends ScriptableObject {
     private static Pattern pathParamValidatorPattern=Pattern.compile("\\{uri\\.var\\.[\\w]+\\}");
 
     private String username;
-    private static String VERSION_PARAM="{version}";
 
     private APIProvider apiProvider;
 
@@ -716,7 +715,6 @@ public class APIProviderHostObject extends ScriptableObject {
         provider = (provider != null ? provider.trim() : null);
         name = (name != null ? name.trim() : null);
         version = (version != null ? version.trim() : null);
-
         APIIdentifier apiId = new APIIdentifier(provider, name, version);
         APIProvider apiProvider = getAPIProvider(thisObj);
 
@@ -727,14 +725,6 @@ public class APIProviderHostObject extends ScriptableObject {
 
         API api = new API(apiId);
         api.setStatus(APIStatus.CREATED);
-
-        // This is to support the new Pluggable version strategy
-        // if the context does not contain any {version} segment, we use the default version strategy.
-        context = checkAndSetVersionParam(context);
-        api.setContextTemplate(context);
-
-        context = updateContextWithVersion(version, contextVal, context);
-
         api.setContext(context);
         api.setVisibility(APIConstants.API_GLOBAL_VISIBILITY);
         api.setLastUpdated(new Date());
@@ -904,7 +894,8 @@ public class APIProviderHostObject extends ScriptableObject {
             		}
             	}
             }
-
+            
+        
 	        JSONArray resources = (JSONArray) resourceConfigs.get("resources");
 	                
 	        //Iterating each resourcePath config
@@ -951,10 +942,7 @@ public class APIProviderHostObject extends ScriptableObject {
                 if(ep.endsWith(RegistryConstants.PATH_SEPARATOR)){
                     ep.substring(0,ep.length()-1);
                 }
-                // We do not need the version in the base path since with the context version strategy, the version is
-                // embedded in the context
-                String basePath = ep+api.getContext();
-//                String basePath = ep+api.getContext()+RegistryConstants.PATH_SEPARATOR+apiId.getVersion();
+                String basePath = ep+api.getContext()+RegistryConstants.PATH_SEPARATOR+apiId.getVersion();
                 resourceConfig.put("basePath",basePath);
 	            String resourceJSON = resourceConfig.toJSONString();
 	            
@@ -1041,7 +1029,6 @@ public class APIProviderHostObject extends ScriptableObject {
         if (provider != null) {
             provider = APIUtil.replaceEmailDomain(provider);
         }
-
         String name = (String) apiData.get("apiName", apiData);
         String version = (String) apiData.get("version", apiData);
         String defaultVersion=(String)apiData.get("defaultVersion",apiData);
@@ -1122,13 +1109,6 @@ public class APIProviderHostObject extends ScriptableObject {
             //Create tenant aware context for API
             context= "/t/"+ providerDomain+context;
         }
-
-        // This is to support the new Pluggable version strategy
-        // if the context does not contain any {version} segment, we use the default version strategy.
-        context = checkAndSetVersionParam(context);
-
-        String contextTemplate = context;
-        context = updateContextWithVersion(version, contextVal, context);
 
         NativeArray uriTemplateArr = (NativeArray) apiData.get("uriTemplateArr", apiData);
 
@@ -1331,7 +1311,6 @@ public class APIProviderHostObject extends ScriptableObject {
         }
         api.setStatus(APIStatus.CREATED);
         api.setContext(context);
-        api.setContextTemplate(contextTemplate);
         api.setBusinessOwner(bizOwner);
         api.setBusinessOwnerEmail(bizOwnerEmail);
         api.setTechnicalOwner(techOwner);
@@ -1399,18 +1378,6 @@ public class APIProviderHostObject extends ScriptableObject {
         }
         return success;
 
-    }
-
-    private static String checkAndSetVersionParam(String context) {
-        // This is to support the new Pluggable version strategy
-        // if the context does not contain any {version} segment, we use the default version strategy.
-        if(!context.contains(VERSION_PARAM)){
-            if(!context.endsWith("/")){
-                context = context + "/";
-            }
-            context = context + VERSION_PARAM;
-        }
-        return context;
     }
 
     private static String getTransports(NativeObject apiData) {
@@ -1556,13 +1523,6 @@ public class APIProviderHostObject extends ScriptableObject {
             context= "/t/"+ providerDomain+context;
         }
 
-        // This is to support the new Pluggable version strategy
-        // if the context does not contain any {version} segment, we use the default version strategy.
-        context = checkAndSetVersionParam(context);
-
-        String contextTemplate = context;
-        context = updateContextWithVersion(version, contextVal, context);
-
         APIIdentifier apiId = new APIIdentifier(provider, name, version);
         API api = new API(apiId);
 
@@ -1687,7 +1647,6 @@ public class APIProviderHostObject extends ScriptableObject {
         api.setSandboxUrl(sandboxUrl);
         api.addTags(tag);
         api.setContext(context);
-        api.setContextTemplate(contextTemplate);
         api.setVisibility(visibility);
         api.setVisibleRoles(visibleRoles != null ? visibleRoles.trim() : null);
         api.setVisibleTenants(visibleTenants != null ? visibleTenants.trim() : null);
@@ -1780,18 +1739,6 @@ public class APIProviderHostObject extends ScriptableObject {
         return success;
     }
 
-    private static String updateContextWithVersion(String version, String contextVal, String context) {
-        // This condition should not be true for any occasion but we keep it so that there are no loopholes in
-        // the flow.
-        if (version == null) {
-            // context template patterns - /{version}/foo or /foo/{version}
-            // if the version is null, then we remove the /{version} part from the context
-            context = contextVal.replace("/" + VERSION_PARAM, "");
-        }else{
-            context = context.replace(VERSION_PARAM, version);
-        }
-        return context;
-    }
     /**
      *
      * @param cx Rhino context
@@ -2911,7 +2858,7 @@ public class APIProviderHostObject extends ScriptableObject {
                 APIUtil.setResourcePermissions(api.getId().getProviderName(),
                                                api.getVisibility(), visibleRoles,filePath);
                 doc.setFilePath(apiProvider.addIcon(filePath, icon));
-            } else if (sourceType.equalsIgnoreCase(Documentation.DocumentSourceType.FILE.toString())) {
+            } else {
                 throw new APIManagementException("Empty File Attachment.");
             }
 
@@ -3478,6 +3425,38 @@ public class APIProviderHostObject extends ScriptableObject {
                 row.put("user", row, usage.getUser());
                 Date date = new Date(String.valueOf(usage.getLastAccessTime()));
                 row.put("lastAccess", row, Long.valueOf(date.getTime()).toString());
+                myn.put(i, myn, row);
+                i++;
+            }
+        }
+        return myn;
+    }
+
+    public static NativeArray jsFunction_getUserAgentSummaryForALLAPIs(Context cx,
+                                                                             Scriptable thisObj,
+                                                                             Object[] args,
+                                                                             Function funObj)
+            throws APIManagementException {
+        List<APIRequestsByUserAgentsDTO> list = null;
+        try {
+            APIUsageStatisticsClient client = new APIUsageStatisticsClient(((APIProviderHostObject) thisObj).getUsername());
+            list = client.getUserAgentSummaryForALLAPIs();
+        } catch (APIMgtUsageQueryServiceClientException e) {
+            log.error("Error while invoking APIUsageStatisticsClient for ProviderAPIVersionLastAccess", e);
+        }
+        NativeArray myn = new NativeArray(0);
+        Iterator it = null;
+        if (list != null) {
+            it = list.iterator();
+        }
+        int i = 0;
+        if (it != null) {
+            while (it.hasNext()) {
+                NativeObject row = new NativeObject();
+                Object usageObject = it.next();
+                APIRequestsByUserAgentsDTO usage = (APIRequestsByUserAgentsDTO) usageObject;
+                row.put("user_agent", row, userAgentParser(usage.getUserAgent()));
+                row.put("request_count", row, usage.getCount());
                 myn.put(i, myn, row);
                 i++;
             }
@@ -4432,9 +4411,8 @@ public class APIProviderHostObject extends ScriptableObject {
 		                for (Object store : externalAPIStores) {
 		                	inputStores.add(APIUtil.getExternalAPIStore((String) store, tenantId));
 		                }
-                        updated = apiProvider.updateAPIsInExternalAPIStores(api,inputStores);
-
-                    }
+		                updated = apiProvider.updateAPIsInExternalAPIStores(api,inputStores);
+	                 }
 	                return updated;
                 } catch (UserStoreException e) {
                 	handleException("Error while updating external api stores", e);
@@ -4770,6 +4748,26 @@ public class APIProviderHostObject extends ScriptableObject {
             }
         }
         return failedJson;
+    }
+
+    public static String userAgentParser(String userAgent){
+        String userBrowser;
+        if(userAgent.contains("Chrome")){
+            userBrowser = "Chrome";
+        }
+        else if(userAgent.contains("Firefox")){
+            userBrowser = "Firefox";
+        }
+        else if(userAgent.contains("Opera")){
+            userBrowser = "Opera";
+        }
+        else if(userAgent.contains("MSIE")){
+            userBrowser = "Internet Explorer";
+        }
+        else{
+            userBrowser = "Other";
+        }
+        return userBrowser;
     }
 
 }
