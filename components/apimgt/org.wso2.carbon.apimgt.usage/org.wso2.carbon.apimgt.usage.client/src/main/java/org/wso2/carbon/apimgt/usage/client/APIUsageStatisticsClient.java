@@ -870,23 +870,6 @@ public class APIUsageStatisticsClient {
         return new ArrayList<APIRequestsByUserAgentsDTO>(apiRequestByUserAgents.values());
     }
 
-    public List<APIThrottledOutTimeDTO> getThrottledOutTime(String fromDate, String toDate) throws APIMgtUsageQueryServiceClientException{
-        OMElement omElement = this.queryBetweenTwoDaysForThrottledTime("THROTTLEOUTTIME_SUMMARY", fromDate, toDate);
-        Collection<APIThrottledOutTime> apiThrottledOutTimeData = getThrottledOutTime(omElement);
-        Map<String, APIThrottledOutTimeDTO> apiThrottledOutTime = new TreeMap<String, APIThrottledOutTimeDTO>();
-        APIThrottledOutTimeDTO apiThrottledOutTimeDTO = null;
-        for (APIThrottledOutTime usageEntry : apiThrottledOutTimeData) {
-            apiThrottledOutTimeDTO = new APIThrottledOutTimeDTO();
-            apiThrottledOutTimeDTO.setAPI(usageEntry.apiName);
-            apiThrottledOutTimeDTO.setAPI_Version(usageEntry.apiVersion);
-            apiThrottledOutTimeDTO.setApplicationID(usageEntry.applicationID);
-            apiThrottledOutTimeDTO.setApplicationName(usageEntry.applicantionName);
-            apiThrottledOutTimeDTO.setThrottledTime(usageEntry.throttledTime);
-            apiThrottledOutTime.put(usageEntry.throttledTime,apiThrottledOutTimeDTO);
-        }
-        return new ArrayList<APIThrottledOutTimeDTO>(apiThrottledOutTime.values());
-    }
-
     public List<APIRequestsByHourDTO> getAPIRequestsByHour(String fromDate, String toDate,String apiName) throws APIMgtUsageQueryServiceClientException{
         String Date = null ;
         OMElement omElement = this.queryBetweenTwoDaysForAPIRequestsByHour("API_REQUESTS_PERHOUR", fromDate, toDate,apiName);
@@ -1270,71 +1253,6 @@ public class APIUsageStatisticsClient {
                     String xmlEscapedValue = StringEscapeUtils.escapeXml(columnValue);
                     returnStringBuilder.append("<" + columnName.toLowerCase() + ">" + xmlEscapedValue +
                             "</" + columnName.toLowerCase() + ">");
-                }
-                returnStringBuilder.append("</row>");
-            }
-            returnStringBuilder.append("</rows></omElement>");
-            String returnString = returnStringBuilder.toString();
-            return AXIOMUtil.stringToOM(returnString);
-
-        } catch (Exception e) {
-            throw new APIMgtUsageQueryServiceClientException("Error occurred while querying from JDBC database", e);
-        } finally {
-            if (rs != null) {
-                try {
-                    rs.close();
-                } catch (SQLException ignore) {
-
-                }
-            }
-            if (statement != null) {
-                try {
-                    statement.close();
-                } catch (SQLException e) {
-
-                }
-            }
-            if (connection != null) {
-                try {
-                    connection.close();
-                } catch (SQLException e) {
-
-                }
-            }
-        }
-    }
-
-    private OMElement queryBetweenTwoDaysForThrottledTime(String columnFamily, String fromDate, String toDate)
-            throws APIMgtUsageQueryServiceClientException {
-
-        if (dataSource == null) {
-            throw new APIMgtUsageQueryServiceClientException("BAM data source hasn't been initialized. Ensure " +
-                                                             "that the data source is properly configured in the APIUsageTracker configuration.");
-        }
-
-        Connection connection = null;
-        Statement statement = null;
-        ResultSet rs = null;
-        try {
-            connection = dataSource.getConnection();
-            statement = connection.createStatement();
-            String query;
-            //TODO: API_FAULT_COUNT need to populate according to match with given time range
-
-            query = "SELECT * FROM  " + columnFamily + " WHERE " + " ThrottledTime "+ " BETWEEN " +
-                        "\'" + fromDate + "\' AND \'" + toDate + "\'";
-
-            rs = statement.executeQuery(query);
-            StringBuilder returnStringBuilder = new StringBuilder("<omElement><rows>");
-            int columnCount = rs.getMetaData().getColumnCount();
-            while (rs.next()) {
-                returnStringBuilder.append("<row>");
-                for (int i = 1; i <= columnCount; i++) {
-                    String columnName = rs.getMetaData().getColumnName(i);
-                    String columnValue = rs.getString(columnName);
-                    String xmlEscapedValue = StringEscapeUtils.escapeXml(columnValue);
-                    returnStringBuilder.append("<" + columnName.toLowerCase() + ">" + xmlEscapedValue +
-                                               "</" + columnName.toLowerCase() + ">");
                 }
                 returnStringBuilder.append("</row>");
             }
@@ -2064,21 +1982,6 @@ public class APIUsageStatisticsClient {
         return userAgentData;
     }
 
-    private Collection<APIThrottledOutTime> getThrottledOutTime(OMElement data) {
-        List<APIThrottledOutTime> apithrottledOutTimeData = new ArrayList<APIThrottledOutTime>();
-        OMElement rowsElement = data.getFirstChildWithName(new QName(
-                APIUsageStatisticsClientConstants.ROWS));
-        Iterator rowIterator = rowsElement.getChildrenWithName(new QName(
-                APIUsageStatisticsClientConstants.ROW));
-        if (rowIterator != null) {
-            while (rowIterator.hasNext()) {
-                OMElement rowElement = (OMElement) rowIterator.next();
-                apithrottledOutTimeData.add(new APIThrottledOutTime(rowElement));
-            }
-        }
-        return apithrottledOutTimeData;
-    }
-
     private Collection<APIRequestsByHour> getAPIRequestsByHour(OMElement data) {
         List<APIRequestsByHour> apiRequestsByHours = new ArrayList<APIRequestsByHour>();
         OMElement rowsElement = data.getFirstChildWithName(new QName(
@@ -2622,23 +2525,6 @@ public class APIUsageStatisticsClient {
             apiVersion = nameVersion.substring(index + 2);
             userAgent = row.getFirstChildWithName(new QName("useragent")).getText();
             totalRequestCount =  Integer.parseInt(row.getFirstChildWithName(new QName("total_request_count")).getText());
-        }
-
-    }
-
-    public static class APIThrottledOutTime{
-        private String apiName;
-        private String apiVersion;
-        private String applicationID;
-        private String applicantionName;
-        private String throttledTime;
-
-        public APIThrottledOutTime(OMElement row){
-            apiName = row.getFirstChildWithName(new QName("api")).getText();
-            apiVersion = row.getFirstChildWithName(new QName("api_version")).getText();
-            applicationID = row.getFirstChildWithName(new QName("appilcationid")).getText();
-            applicantionName = row.getFirstChildWithName(new QName("applicationname")).getText();
-            throttledTime = row.getFirstChildWithName(new QName("throttledtime")).getText();
         }
 
     }
